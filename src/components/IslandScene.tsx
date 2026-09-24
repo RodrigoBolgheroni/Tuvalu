@@ -88,6 +88,42 @@ function coordinatesToPolygons(geometry: GeoGeometry): PolygonCoords[] {
   return [];
 }
 
+function emphasizeNarrowLand(rings: Position[][]): Position[][] {
+  const outer = rings[0];
+  if (!outer || outer.length < 4) return rings;
+  const points = outer.slice(0, outer.length - 1);
+  if (points.length < 3) return rings;
+  const center = points.reduce(([sumX, sumZ], [x, z]) => [sumX + x / points.length, sumZ + z / points.length] as Position, [0, 0] as Position);
+  let xx = 0, zz = 0, xz = 0;
+  for (const [x, z] of points) {
+    const dx = x - center[0], dz = z - center[1];
+    xx += dx * dx; zz += dz * dz; xz += dx * dz;
+  }
+  xx /= points.length; zz /= points.length; xz /= points.length;
+  const angle = 0.5 * Math.atan2(2 * xz, xx - zz);
+  const majorAxis: Position = [Math.cos(angle), Math.sin(angle)];
+  const minorAxis: Position = [-majorAxis[1], majorAxis[0]];
+  const halfTrace = (xx + zz) / 2;
+  const eigenSpread = Math.sqrt(Math.max(0, ((xx - zz) / 2) ** 2 + xz ** 2));
+  const majorVariance = halfTrace + eigenSpread;
+  const minorVariance = Math.max(0, halfTrace - eigenSpread);
+  const aspectRatio = Math.sqrt(majorVariance / Math.max(minorVariance, 1e-10));
+  if (aspectRatio < 1.3) return rings;
+
+  // Emphasize the short axis of mapped motus while keeping their outlines and orientation.
+  const widthScale = aspectRatio > 3.5 ? 3 : aspectRatio > 2 ? 2.25 : 1.6;
+  const lengthScale = 1.04;
+  return rings.map((ring) => ring.map(([x, z]) => {
+    const dx = x - center[0], dz = z - center[1];
+    const along = dx * majorAxis[0] + dz * majorAxis[1];
+    const across = dx * minorAxis[0] + dz * minorAxis[1];
+    return [
+      center[0] + majorAxis[0] * along * lengthScale + minorAxis[0] * across * widthScale,
+      center[1] + majorAxis[1] * along * lengthScale + minorAxis[1] * across * widthScale,
+    ];
+  }));
+}
+
 function prepareCollection(collection: GeoCollection, island: Island): GeoModel | null {
   const parsed: { rings: Position[][]; building: boolean }[] = [];
   const referenceLon = island.lon;
@@ -100,7 +136,7 @@ function prepareCollection(collection: GeoCollection, island: Island): GeoModel 
         const adjustedLon = lon < 0 && referenceLon > 170 ? lon + 360 : lon;
         return [(adjustedLon - referenceLon) * 111.32 * cosLat, (lat - island.lat) * 111.32] as Position;
       }));
-      parsed.push({ rings, building: isBuilding });
+      parsed.push({ rings: isBuilding ? rings : emphasizeNarrowLand(rings), building: isBuilding });
     }
   }
   if (!parsed.length) return null;
@@ -155,7 +191,7 @@ function LandShape({ poly, bounds, imageUrl, terrainMaterial }: {
   const geometry = useMemo(() => {
     const shape = makeShape(poly);
     if (!shape) return null;
-    const result = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false, curveSegments: 1 });
+    const result = new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: false, curveSegments: 1 });
     result.rotateX(-Math.PI / 2);
     const positions = result.getAttribute("position");
     const uv = new Float32Array(positions.count * 2);
@@ -197,7 +233,7 @@ function BuildingsLayer({ polygons }: { polygons: ProjectedPoly[] }) {
       if (!shape) return [];
       const piece = new THREE.ExtrudeGeometry(shape, { depth: 0.075, bevelEnabled: false, curveSegments: 1 });
       piece.rotateX(-Math.PI / 2);
-      piece.translate(0, 0.08, 0);
+      piece.translate(0, 0.12, 0);
       return [piece];
     });
     if (!pieces.length) return null;
@@ -243,7 +279,7 @@ function Vegetation({ positions, droughtIntensity }: { positions: [number, numbe
       const healthyHeight = 0.14 + ((index * 17) % 7) / 90;
       const height = healthyHeight * (1 - stress * 0.27);
       const width = 0.034 * (1 - stress * 0.1);
-      tree.position.set(x, 0.08 + height / 2, -z);
+      tree.position.set(x, 0.12 + height / 2, -z);
       tree.scale.set(width, height, width);
       tree.rotation.y = (index * 1.71) % (Math.PI * 2);
       tree.updateMatrix(); mesh.current!.setMatrixAt(index, tree.matrix);
@@ -364,6 +400,6 @@ export default function IslandScene({ island, seaAmount, droughtIntensity, yearL
         <button aria-pressed={mapStyle === "SATELLITE"} onClick={() => setMapStyle("SATELLITE")}>Satellite</button>
       </div>}
       <button onClick={reset}>Reset view</button></div>
-    <p className="cartography-note">© OpenStreetMap contributors. Coastline and buildings are mapped features; vegetation is representative. Vertical scale and water movement are exaggerated for legibility. This is not a parcel-level inundation map.</p>
+    <p className="cartography-note">© OpenStreetMap contributors. Coastline and buildings are mapped features; narrow land widths and vertical scale are exaggerated for legibility. Vegetation and water movement are illustrative. This is not a parcel-level inundation map.</p>
   </section>;
 }
