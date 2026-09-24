@@ -1,0 +1,11 @@
+{
+  "title": "Tuvalu island and building geometries",
+  "source": "OpenStreetMap contributors",
+  "license": "ODbL 1.0",
+  "coastlineSource": "Overpass API, natural=coastline ways queried in each island bounding box",
+  "buildingsSource": "Geofabrik daily OpenStreetMap extract, buildings polygon layer",
+  "retrieved": "2026-09-24",
+  "attribution": "© OpenStreetMap contributors",
+  "url": "https://www.openstreetmap.org/copyright",
+  "note": "Coastline ways were joined by shared OSM endpoints. Unclosed fragments were omitted; named island-area outlines were used where they fill a missing closed coastline. The three-dimensional vertical scale is illustrative."
+}
