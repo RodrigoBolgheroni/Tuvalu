@@ -17,6 +17,71 @@ type GeoModel = { land: ProjectedPoly[]; buildings: ProjectedPoly[]; bounds: [nu
 
 const targetRef: [number, number, number] = [0, 0.04, 0];
 
+function createTerrainTexture() {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const coarse = Math.sin(x * 0.052 + Math.sin(y * 0.031)) * Math.cos(y * 0.047 - x * 0.019);
+      const grain = Math.sin((x * 127.1 + y * 311.7) * 0.754877666) * 0.5;
+      const fleck = Math.sin(x * 0.21 + y * 0.17) * Math.sin(y * 0.19 - x * 0.13);
+      const variation = coarse * 5 + grain * 4 + fleck * 2;
+      const index = (y * size + x) * 4;
+      data[index] = THREE.MathUtils.clamp(217 + variation, 0, 255);
+      data[index + 1] = THREE.MathUtils.clamp(207 + variation, 0, 255);
+      data[index + 2] = THREE.MathUtils.clamp(174 + variation * 0.9, 0, 255);
+      data[index + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 6);
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+const terrainTexture = createTerrainTexture();
+
+const waterVertexShader = /* glsl */ `
+  uniform float uTime;
+  varying vec3 vWorldPosition;
+  void main() {
+    vec3 displaced = position;
+    float swell = sin(position.x * 1.35 + position.y * 0.72 + uTime * 0.34) * 0.004;
+    swell += sin(position.y * 1.9 - position.x * 0.48 - uTime * 0.25) * 0.003;
+    displaced.z += swell;
+    vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
+    vWorldPosition = worldPosition.xyz;
+    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+  }
+`;
+
+const waterFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uRise;
+  varying vec3 vWorldPosition;
+  void main() {
+    vec2 p = vWorldPosition.xz;
+    float longSwell = sin(dot(p, vec2(0.84, 0.54)) * 1.45 + uTime * 0.11);
+    float crossSwell = sin(dot(p, vec2(-0.42, 0.91)) * 2.25 - uTime * 0.085);
+    float fineRipples = sin(dot(p, vec2(0.93, -0.37)) * 5.2 + uTime * 0.13);
+    float light = longSwell * 0.035 + crossSwell * 0.025 + fineRipples * 0.012;
+    vec3 deep = vec3(0.035, 0.25, 0.28);
+    vec3 shallow = vec3(0.075, 0.39, 0.39);
+    vec3 color = mix(deep, shallow, clamp(0.3 + uRise * 0.32 + light, 0.0, 0.78));
+    float glint = smoothstep(0.91, 0.99, fineRipples + longSwell * 0.08);
+    color += vec3(0.07, 0.14, 0.13) * glint * 0.28;
+    gl_FragColor = vec4(color, 0.88);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }
+`;
+
 function coordinatesToPolygons(geometry: GeoGeometry): PolygonCoords[] {
   if (geometry.type === "Polygon") return [geometry.coordinates as PolygonCoords];
   if (geometry.type === "MultiPolygon") return geometry.coordinates as PolygonCoords[];
@@ -88,16 +153,14 @@ function LandShape({ poly, bounds, imageUrl }: { poly: ProjectedPoly; bounds: Ge
     if (!shape) return null;
     const result = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false, curveSegments: 1 });
     result.rotateX(-Math.PI / 2);
-    if (imageUrl) {
-      const positions = result.getAttribute("position");
-      const uv = new Float32Array(positions.count * 2);
-      const [minX, maxX, minZ, maxZ] = bounds;
-      for (let index = 0; index < positions.count; index++) {
-        uv[index * 2] = (positions.getX(index) - minX) / Math.max(0.001, maxX - minX);
-        uv[index * 2 + 1] = (-positions.getZ(index) - minZ) / Math.max(0.001, maxZ - minZ);
-      }
-      result.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    const positions = result.getAttribute("position");
+    const uv = new Float32Array(positions.count * 2);
+    const [minX, maxX, minZ, maxZ] = bounds;
+    for (let index = 0; index < positions.count; index++) {
+      uv[index * 2] = (positions.getX(index) - minX) / Math.max(0.001, maxX - minX);
+      uv[index * 2 + 1] = (-positions.getZ(index) - minZ) / Math.max(0.001, maxZ - minZ);
     }
+    result.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
     return result;
   }, [poly, bounds, imageUrl]);
   useEffect(() => {
@@ -106,7 +169,7 @@ function LandShape({ poly, bounds, imageUrl }: { poly: ProjectedPoly; bounds: Ge
   }, [geometry]);
   if (!geometry) return null;
   return <mesh geometry={geometry} castShadow receiveShadow>
-    {imageUrl ? <SatelliteMaterial url={imageUrl} /> : <meshStandardMaterial color="#d9d0aa" roughness={0.9} />}
+    {imageUrl ? <SatelliteMaterial url={imageUrl} /> : <meshStandardMaterial map={terrainTexture} color="#fff" roughness={0.94} />}
   </mesh>;
 }
 
@@ -176,12 +239,19 @@ function Vegetation({ positions }: { positions: [number, number][] }) {
 
 function Water({ amount }: { amount: number }) {
   const ref = useRef<THREE.Mesh>(null);
-  const targetY = -0.06 + amount * 0.19;
+  const material = useRef<THREE.ShaderMaterial>(null);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uRise: { value: amount } }), []);
+  const targetY = -0.035 + amount * 0.085;
   useFrame((_, delta) => {
-    if (ref.current) ref.current.position.y = THREE.MathUtils.damp(ref.current.position.y, targetY, 1.4, delta);
+    if (ref.current) ref.current.position.y = THREE.MathUtils.damp(ref.current.position.y, targetY, 1.15, delta);
+    if (material.current) {
+      material.current.uniforms.uTime.value += delta;
+      material.current.uniforms.uRise.value = THREE.MathUtils.damp(material.current.uniforms.uRise.value, amount, 1.1, delta);
+    }
   });
   return <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0]}>
-    <planeGeometry args={[30, 30]} /><meshStandardMaterial color="#2c8285" transparent opacity={0.62} roughness={0.28} metalness={0.04} depthWrite={false} />
+    <planeGeometry args={[30, 30, 72, 72]} />
+    <shaderMaterial ref={material} uniforms={uniforms} vertexShader={waterVertexShader} fragmentShader={waterFragmentShader} transparent depthWrite={false} />
   </mesh>;
 }
 
