@@ -239,7 +239,7 @@ export default function IslandScene({ island, seaAmount, yearLabel, onBack }: {
   const satelliteUrl = mapStyle === "SATELLITE" && imageTemplate ? imageTemplate.replaceAll("{island}", island.id) : null;
   const seaLabel = yearLabel === "2050" ? "+20 cm or more" : yearLabel === "2090" ? "+0.5–1 m range" : yearLabel === "2030" ? "Future scenario" : yearLabel === "NOW" ? "Latest published context" : "Historical context";
   return <section className={`map-stage island-stage ${model ? "model-ready" : ""}`}>
-    {model && <Canvas key={resetKey} shadows dpr={[1, 1.7]} gl={{ antialias: true, alpha: false }}>
+    {model && <Canvas key={resetKey} shadows="percentage" dpr={[1, 1.7]} gl={{ antialias: true, alpha: false }}>
       <color attach="background" args={["#15535a"]} />
       <SceneModel model={model} amount={seaAmount} imageUrl={satelliteUrl} />
     </Canvas>}
