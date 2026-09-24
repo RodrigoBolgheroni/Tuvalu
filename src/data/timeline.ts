@@ -19,8 +19,11 @@ export type Moment = {
   sourceType: string;
   scenario: boolean;
   sea: number;
-  drought: number;
+  droughtObserved: boolean;
+  droughtVisual: number;
 };
+
+// Visual tint strength for documented national drought events. It is not a measured local index.
 
 export const moments: Record<YearKey, Moment> = {
   "2007": {
@@ -31,7 +34,7 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "A single village or a chain of islets shapes how people reach water, gardens and the lagoon.",
     response: "Community water storage and customary care for land and reefs help manage limited resources.",
     evidence: "Island geography and water practices documented by UNESCO; this year is a context marker, not a dated island event.",
-    seaLevel: "Historical reference · no island-specific 2007 elevation layer", sourceType: "Historical context", scenario: false, sea: 0.04, drought: 0.1,
+    seaLevel: "Historical reference · no island-specific 2007 elevation layer", sourceType: "Historical context", scenario: false, sea: 0.04, droughtObserved: false, droughtVisual: 0,
   },
   "2011": {
     category: "HISTORICAL EVENT", title: "A severe drought strains stored water.",
@@ -41,7 +44,7 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "The emergency affected the whole population. Effects on each island’s households were not reported separately in the cited national account.",
     response: "The government declared a state of emergency on 28 September 2011; communal water was rationed nationally.",
     evidence: "Tuvalu Climate Hazards report (2024), citing government records; ADB project report.",
-    seaLevel: "Historical context · drought conditions highlighted", sourceType: "National observation with local context", scenario: false, sea: 0.06, drought: 1,
+    seaLevel: "Historical context · drought conditions highlighted", sourceType: "National observation with local context", scenario: false, sea: 0.06, droughtObserved: true, droughtVisual: 1,
   },
   "2022": {
     category: "HISTORICAL EVENT", title: "Drought returns; the census records each home island.",
@@ -51,7 +54,7 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "The census counted 10,632 residents by home island. The figure beside this island is the home-island population, not everyone currently living there.",
     response: "Emergency support and water supply measures accompanied the national drought response.",
     evidence: "Tuvalu Central Statistics Division 2022 Census; ADB project report on the November 2022 drought.",
-    seaLevel: "Historical reference · recent census population shown", sourceType: "Observed national event + census", scenario: false, sea: 0.1, drought: 0.82,
+    seaLevel: "Historical reference · recent census population shown", sourceType: "Observed national event + census", scenario: false, sea: 0.1, droughtObserved: true, droughtVisual: 0.78,
   },
   now: {
     category: "LATEST SOURCED CONTEXT", title: "Local conditions are not measured uniformly.",
@@ -61,7 +64,7 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "Population figures use 2022 home-island census counts, not a live estimate of current residents.",
     response: "Tuvalu’s national climate and water programmes combine local planning with infrastructure investment.",
     evidence: "Latest sources currently used: 2022 Census, Tuvalu Climate Hazards 2024 and the ADB water project report.",
-    seaLevel: "Observed and projected sea level vary by location and scenario", sourceType: "Latest available published sources", scenario: false, sea: 0.14, drought: 0.32,
+    seaLevel: "Observed and projected sea level vary by location and scenario", sourceType: "Latest available published sources", scenario: false, sea: 0.14, droughtObserved: false, droughtVisual: 0,
   },
   "2030": {
     category: "FUTURE SCENARIO", title: "Planning for a hotter, higher-water future.",
@@ -71,7 +74,7 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "Changes are not uniform. This scene keeps the selected island in view while the scenario shifts.",
     response: "National Climate Change Policy and Te Kete cover the 2021–2030 planning period.",
     evidence: "Planning horizon, not an observed event. No 2030 island-specific projection is stated here.",
-    seaLevel: "Scenario context · model layer is illustrative", sourceType: "Future scenario", scenario: true, sea: 0.2, drought: 0.38,
+    seaLevel: "Scenario context · model layer is illustrative", sourceType: "Future scenario", scenario: true, sea: 0.2, droughtObserved: false, droughtVisual: 0,
   },
   "2050": {
     category: "FUTURE SCENARIO", title: "Higher tides reach farther across low ground.",
@@ -81,7 +84,7 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "NASA estimates areas of Tuvalu with fewer than five high-tide flood days today could average 25 days a year by the 2050s.",
     response: "Coastal adaptation works and reliable water storage can reduce some risks; this is a scenario, not an exact prediction.",
     evidence: "NASA Sea Level Change Team regional assessment using IPCC AR6 projections.",
-    seaLevel: "At least +20 cm by 2050 · regional projection", sourceType: "Future scenario · regional projection", scenario: true, sea: 0.58, drought: 0.42,
+    seaLevel: "At least +20 cm by 2050 · regional projection", sourceType: "Future scenario · regional projection", scenario: true, sea: 0.58, droughtObserved: false, droughtVisual: 0,
   },
   "2090": {
     category: "FUTURE SCENARIO", title: "A wider range of late-century outcomes.",
@@ -91,6 +94,6 @@ export const moments: Record<YearKey, Moment> = {
     dailyLife: "The model raises a broad water surface to help show vulnerability. It is not a local inundation calculation.",
     response: "Long-term outcomes depend on emissions and locally chosen adaptation; this scenario is not a confirmed future event.",
     evidence: "NASA Sea Level Change Team assessment and IPCC AR6 projection range, summarized for Tuvalu.",
-    seaLevel: "+0.5 to +1 m by end-century · regional range", sourceType: "Future scenario · regional range", scenario: true, sea: 1, drought: 0.48,
+    seaLevel: "+0.5 to +1 m by end-century · regional range", sourceType: "Future scenario · regional range", scenario: true, sea: 1, droughtObserved: false, droughtVisual: 0,
   },
 };

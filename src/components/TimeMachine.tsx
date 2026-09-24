@@ -68,6 +68,7 @@ export default function TimeMachine() {
   }, []);
   const selectedIndex = years.findIndex(({ key }) => key === selectedYear);
   const seaAmount = useMemo(() => moment.sea, [moment]);
+  const droughtIntensity = moment.droughtObserved ? moment.droughtVisual : 0;
 
   return <div className="time-machine">
     <header className="app-header">
@@ -82,7 +83,7 @@ export default function TimeMachine() {
     </header>
 
     <main className="main-content">
-      {island ? <IslandScene island={island} seaAmount={seaAmount} yearLabel={yearLabel} onBack={goOverview} />
+      {island ? <IslandScene island={island} seaAmount={seaAmount} droughtIntensity={droughtIntensity} yearLabel={yearLabel} onBack={goOverview} />
         : <OverviewMap selectedIsland={selectedIsland} onSelect={openIsland} />}
       <InfoPanel island={island} yearLabel={yearLabel} moment={moment} expanded={learnMoreOpen} onToggle={() => setLearnMoreOpen((open) => !open)} />
     </main>

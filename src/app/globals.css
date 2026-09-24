@@ -134,6 +134,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--coral); outline
 .legend-square { width: 7px; height: 7px; margin: 3px; background: #b49d7f; }
 .legend-tree { width: 8px; height: 8px; margin: 1px 3px; border-radius: 50%; background: #849771; }
 .legend-sea { width: 8px; height: 8px; margin: 1px 3px; border-radius: 50%; background: #52a3a0; }
+.legend-drought { width: 8px; height: 8px; margin: 1px 3px; border-radius: 50%; background: #c87953; box-shadow: 0 0 7px rgba(200,121,83,.35); }
 .scene-loading { position: absolute; z-index: 3; left: 50%; top: 54%; transform: translate(-50%, -50%); min-width: 220px; display: flex; align-items: center; flex-direction: column; gap: 9px; color: #eee8d5; text-align: center; }
 .scene-loading b { font: 500 19px var(--serif); }
 .scene-loading > span:last-child { color: #c1d0c3; font-size: 10px; }

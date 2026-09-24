@@ -109,11 +109,13 @@ function prepareCollection(collection: GeoCollection, island: Island): GeoModel 
   const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const span = Math.max(maxX - minX, maxZ - minZ);
   if (!Number.isFinite(span) || span <= 0) return null;
-  const scale = 4.5 / span;
-  const project = (rings: Position[][]) => rings.map((ring) => ring.map(([x, z]) => [x * scale, z * scale] as [number, number]));
+  const scale = 5.4 / span;
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const project = (rings: Position[][]) => rings.map((ring) => ring.map(([x, z]) => [(x - centerX) * scale, (z - centerZ) * scale] as [number, number]));
   const land = parsed.filter(({ building }) => !building).map(({ rings }) => ({ rings: project(rings) }));
   const buildings = parsed.filter(({ building }) => building).map(({ rings }) => ({ rings: project(rings) }));
-  const bounds: GeoModel["bounds"] = [minX * scale, maxX * scale, minZ * scale, maxZ * scale];
+  const bounds: GeoModel["bounds"] = [(minX - centerX) * scale, (maxX - centerX) * scale, (minZ - centerZ) * scale, (maxZ - centerZ) * scale];
   return { land, buildings, bounds, vegetation: makeVegetationPositions(land, bounds) };
 }
 
@@ -147,7 +149,9 @@ function polygonContains(poly: ProjectedPoly, x: number, z: number) {
   return !!outer && ray(outer) && !holes.some(ray);
 }
 
-function LandShape({ poly, bounds, imageUrl }: { poly: ProjectedPoly; bounds: GeoModel["bounds"]; imageUrl: string | null }) {
+function LandShape({ poly, bounds, imageUrl, terrainMaterial }: {
+  poly: ProjectedPoly; bounds: GeoModel["bounds"]; imageUrl: string | null; terrainMaterial: THREE.MeshStandardMaterial;
+}) {
   const geometry = useMemo(() => {
     const shape = makeShape(poly);
     if (!shape) return null;
@@ -163,14 +167,21 @@ function LandShape({ poly, bounds, imageUrl }: { poly: ProjectedPoly; bounds: Ge
     result.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
     return result;
   }, [poly, bounds, imageUrl]);
+  const coastline = useMemo(() => geometry ? new THREE.EdgesGeometry(geometry, 1) : null, [geometry]);
   useEffect(() => {
     if (!geometry) return;
     return () => geometry.dispose();
   }, [geometry]);
-  if (!geometry) return null;
-  return <mesh geometry={geometry} castShadow receiveShadow>
-    {imageUrl ? <SatelliteMaterial url={imageUrl} /> : <meshStandardMaterial map={terrainTexture} color="#fff" roughness={0.94} />}
-  </mesh>;
+  useEffect(() => () => coastline?.dispose(), [coastline]);
+  if (!geometry || !coastline) return null;
+  return <>
+    <mesh geometry={geometry} material={imageUrl ? undefined : terrainMaterial} castShadow receiveShadow>
+      {imageUrl && <SatelliteMaterial url={imageUrl} />}
+    </mesh>
+    <lineSegments geometry={coastline} position={[0, 0.003, 0]} renderOrder={2}>
+      <lineBasicMaterial color="#ead9af" transparent opacity={0.5} depthWrite={false} />
+    </lineSegments>
+  </>;
 }
 
 function SatelliteMaterial({ url }: { url: string }) {
@@ -184,7 +195,7 @@ function BuildingsLayer({ polygons }: { polygons: ProjectedPoly[] }) {
     const pieces = polygons.flatMap((poly) => {
       const shape = makeShape(poly);
       if (!shape) return [];
-      const piece = new THREE.ExtrudeGeometry(shape, { depth: 0.055, bevelEnabled: false, curveSegments: 1 });
+      const piece = new THREE.ExtrudeGeometry(shape, { depth: 0.075, bevelEnabled: false, curveSegments: 1 });
       piece.rotateX(-Math.PI / 2);
       piece.translate(0, 0.08, 0);
       return [piece];
@@ -217,23 +228,32 @@ function makeVegetationPositions(polygons: ProjectedPoly[], bounds: GeoModel["bo
   return candidates.filter((_, index) => index % stride === 0).slice(0, 120);
 }
 
-function Vegetation({ positions }: { positions: [number, number][] }) {
+function Vegetation({ positions, droughtIntensity }: { positions: [number, number][]; droughtIntensity: number }) {
   const mesh = useRef<THREE.InstancedMesh>(null);
-  useEffect(() => {
+  const material = useRef<THREE.MeshStandardMaterial>(null);
+  const displayedDrought = useRef(0);
+  const tree = useMemo(() => new THREE.Object3D(), []);
+  const healthyColor = useMemo(() => new THREE.Color("#71835c"), []);
+  const dryColor = useMemo(() => new THREE.Color("#a66d4d"), []);
+  useFrame((_, delta) => {
     if (!mesh.current) return;
-    const object = new THREE.Object3D();
+    displayedDrought.current = THREE.MathUtils.damp(displayedDrought.current, droughtIntensity, 1.1, delta);
+    const stress = displayedDrought.current;
     positions.forEach(([x, z], index) => {
-      const height = 0.08 + ((index * 17) % 7) / 130;
-      object.position.set(x, 0.075 + height / 2, -z);
-      object.scale.set(0.025, height, 0.025);
-      object.rotation.y = (index * 1.71) % (Math.PI * 2);
-      object.updateMatrix(); mesh.current!.setMatrixAt(index, object.matrix);
+      const healthyHeight = 0.14 + ((index * 17) % 7) / 90;
+      const height = healthyHeight * (1 - stress * 0.27);
+      const width = 0.034 * (1 - stress * 0.1);
+      tree.position.set(x, 0.08 + height / 2, -z);
+      tree.scale.set(width, height, width);
+      tree.rotation.y = (index * 1.71) % (Math.PI * 2);
+      tree.updateMatrix(); mesh.current!.setMatrixAt(index, tree.matrix);
     });
     mesh.current.instanceMatrix.needsUpdate = true;
-  }, [positions]);
+    if (material.current) material.current.color.lerpColors(healthyColor, dryColor, stress);
+  });
   if (!positions.length) return null;
-  return <instancedMesh ref={mesh} args={[undefined, undefined, positions.length]} castShadow>
-    <coneGeometry args={[1, 1, 5]} /><meshStandardMaterial color="#71835c" roughness={1} />
+  return <instancedMesh ref={mesh} args={[undefined, undefined, positions.length]}>
+    <coneGeometry args={[1, 1, 5]} /><meshStandardMaterial ref={material} color="#71835c" roughness={1} />
   </instancedMesh>;
 }
 
@@ -255,10 +275,21 @@ function Water({ amount }: { amount: number }) {
   </mesh>;
 }
 
-function SceneModel({ model, amount, imageUrl }: { model: GeoModel; amount: number; imageUrl: string | null }) {
+function SceneModel({ model, amount, imageUrl, droughtIntensity }: {
+  model: GeoModel; amount: number; imageUrl: string | null; droughtIntensity: number;
+}) {
   const controls = useRef(null);
+  const terrainMaterial = useMemo(() => new THREE.MeshStandardMaterial({ map: terrainTexture, color: "#fff", roughness: 0.94 }), []);
+  const displayedDrought = useRef(0);
+  const healthyLand = useMemo(() => new THREE.Color("#ffffff"), []);
+  const dryLand = useMemo(() => new THREE.Color("#dfa562"), []);
+  useFrame((_, delta) => {
+    displayedDrought.current = THREE.MathUtils.damp(displayedDrought.current, droughtIntensity, 1.1, delta);
+    terrainMaterial.color.lerpColors(healthyLand, dryLand, displayedDrought.current);
+  });
+  useEffect(() => () => terrainMaterial.dispose(), [terrainMaterial]);
   return <>
-    <PerspectiveCamera makeDefault position={[0, 4.2, 6.3]} fov={38} />
+    <PerspectiveCamera makeDefault position={[0, 3.85, 5.75]} fov={38} />
     <OrbitControls ref={controls} target={targetRef} minDistance={2.7} maxDistance={11} maxPolarAngle={Math.PI * 0.48} enableDamping dampingFactor={0.08} />
     <ambientLight intensity={1.25} />
     <directionalLight position={[-3, 7, 4]} intensity={2.1} castShadow shadow-mapSize={[1024, 1024]} />
@@ -266,25 +297,28 @@ function SceneModel({ model, amount, imageUrl }: { model: GeoModel; amount: numb
       <mesh position={[0, -0.16, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[30, 30]} /><meshStandardMaterial color="#15535a" roughness={0.82} />
       </mesh>
-      {model.land.map((poly, index) => <LandShape poly={poly} bounds={model.bounds} imageUrl={imageUrl} key={`land-${index}`} />)}
+      {model.land.map((poly, index) => <LandShape poly={poly} bounds={model.bounds} imageUrl={imageUrl} terrainMaterial={terrainMaterial} key={`land-${index}`} />)}
       <BuildingsLayer polygons={model.buildings} />
-      <Vegetation positions={model.vegetation} />
+      <Vegetation positions={model.vegetation} droughtIntensity={droughtIntensity} />
       <Water amount={amount} />
     </group>
     <gridHelper args={[10, 20, "#49787a", "#2b6266"]} position={[0, -0.155, 0]} />
   </>;
 }
 
-function ShapeLegend({ buildingCount, treeCount, seaLevel }: { buildingCount: number; treeCount: number; seaLevel: string }) {
+function ShapeLegend({ buildingCount, treeCount, seaLevel, droughtIntensity }: {
+  buildingCount: number; treeCount: number; seaLevel: string; droughtIntensity: number;
+}) {
   return <div className="scene-legend">
     <div><i className="legend-square" /><span><b>Buildings</b><small>{buildingCount} mapped footprints</small></span></div>
     <div><i className="legend-tree" /><span><b>Vegetation</b><small>{treeCount} representative trees</small></span></div>
     <div><i className="legend-sea" /><span><b>Sea level</b><small>{seaLevel}</small></span></div>
+    {droughtIntensity > 0 && <div><i className="legend-drought" /><span><b>National drought</b><small>Local severity unmeasured · tint illustrative</small></span></div>}
   </div>;
 }
 
-export default function IslandScene({ island, seaAmount, yearLabel, onBack }: {
-  island: Island; seaAmount: number; yearLabel: string; onBack: () => void;
+export default function IslandScene({ island, seaAmount, droughtIntensity, yearLabel, onBack }: {
+  island: Island; seaAmount: number; droughtIntensity: number; yearLabel: string; onBack: () => void;
 }) {
   const [collection, setCollection] = useState<GeoCollection | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -311,7 +345,7 @@ export default function IslandScene({ island, seaAmount, yearLabel, onBack }: {
   return <section className={`map-stage island-stage ${model ? "model-ready" : ""}`}>
     {model && <Canvas key={resetKey} shadows="percentage" dpr={[1, 1.7]} gl={{ antialias: true, alpha: false }}>
       <color attach="background" args={["#15535a"]} />
-      <SceneModel model={model} amount={seaAmount} imageUrl={satelliteUrl} />
+      <SceneModel model={model} amount={seaAmount} imageUrl={satelliteUrl} droughtIntensity={droughtIntensity} />
     </Canvas>}
     <div className="scene-overlay scene-top-left">
       <button className="back-button" onClick={onBack}><span>←</span> All islands</button>
@@ -319,7 +353,7 @@ export default function IslandScene({ island, seaAmount, yearLabel, onBack }: {
       <h2>{island.name}</h2>
       {island.areaKm2 && <div className="scene-area">{island.areaKm2.toFixed(2)} km² land area</div>}
     </div>
-    {model && <ShapeLegend buildingCount={buildingsCount} treeCount={model.vegetation.length} seaLevel={seaLabel} />}
+    {model && <ShapeLegend buildingCount={buildingsCount} treeCount={model.vegetation.length} seaLevel={seaLabel} droughtIntensity={droughtIntensity} />}
     {!model && <div className="scene-loading" role="status">
       {!loadError ? <><span className="spinner" /><b>Building {island.name}</b><span>Reading local coastline and building footprints…</span></> : <><b>Coastline data unavailable</b><span>Check the local GeoJSON asset for {island.name}.</span></>}
     </div>}
