@@ -28,3 +28,8 @@ node scripts/import-openstreetmap.mjs <geofabrik-shapefile-directory> <overpass-
 ```
 
 The script joins coastline ways by shared OSM endpoints, uses named island-area outlines for uncovered land, assigns mapped building footprints to each island and writes the nine local GeoJSON files.
+## Publish with GitHub Pages
+
+The app is exported as a static site into `out/`. The workflow at `.github/workflows/deploy.yml` builds and publishes it whenever `main` is updated, or when started manually from the Actions tab.
+
+For the first publication, open the repository settings, go to **Pages**, and choose **GitHub Actions** as the build and deployment source. Project-site paths are inferred from the repository name; user or organization sites ending in `.github.io` use the root path. Set `NEXT_PUBLIC_BASE_PATH` in the workflow only if the site uses a custom path.
